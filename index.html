@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>신구대학교 드론 측량 플래너 (Premium)</title>
+    <!-- Leaflet 및 Leaflet.draw CDN -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
+    <!-- Font Awesome 아이콘 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" />
+    <!-- 스타일 정의 -->
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+    <!-- 로그인 오버레이 인터페이스 -->
+    <div id="login-overlay" class="login-overlay">
+        <div class="login-box">
+            <div class="login-header">
+                <span class="login-icon">🛸</span>
+                <h2>신구대학교 드론 측량 플래너 (Premium)</h2>
+                <p>서비스 이용을 위해 로그인해주세요.</p>
+            </div>
+            <div class="login-form">
+                <div class="input-group">
+                    <i class="fa-solid fa-user"></i>
+                    <input type="text" id="login-user" placeholder="아이디 (user)" onkeyup="handleLoginKeyup(event)">
+                </div>
+                <div class="input-group">
+                    <i class="fa-solid fa-lock"></i>
+                    <input type="password" id="login-pass" placeholder="비밀번호 (user2685)" onkeyup="handleLoginKeyup(event)">
+                </div>
+                <div id="login-error" class="error-text"></div>
+                <button onclick="checkLogin()" class="login-btn">로그인</button>
+            </div>
+            <div class="login-footer">
+                &copy; 2026 신구대학교 드론 측량 플래너 팀
+            </div>
+        </div>
+    </div>
+
+    <!-- 메인 앱 인터페이스 -->
+    <div id="app">
+        <header>
+            <div class="logo">
+                <span class="icon">🛸</span>
+                <h1>신구대학교 드론 측량 플래너 <span>Premium</span></h1>
+            </div>
+            <div class="status-bar">
+                <span id="coord-display">준비됨</span>
+                <button id="btn-sidebar-toggle" class="mobile-only"><i class="fa-solid fa-bars"></i></button>
+            </div>
+        </header>
+
+        <main>
+            <div id="map-container">
+                <!-- Leaflet 지도 객체 -->
+                <div id="map"></div>
+                
+                <!-- 경로 파라미터 조절용 오버레이 컨트롤 (바텀 시트 겸용) -->
+                <div class="overlay-controls" id="overlay-controls">
+                    <div class="sheet-handle" id="sheet-handle"><span></span></div>
+                    <div class="sheet-content">
+                        <!-- 드론 기종 선택 사전 정의 -->
+                        <div class="control-group">
+                            <label>드론 기종 사전 설정 (Preset)</label>
+                            <select id="drone-model">
+                                <option value="mini4pro" selected>DJI Mini 4 Pro (HFOV 73.7°)</option>
+                                <option value="mavic3pro">DJI Mavic 3 Pro Main (HFOV 73.7°)</option>
+                                <option value="air3wide">DJI Air 3 Wide-Angle (HFOV 73.7°)</option>
+                                <option value="air3tele">DJI Air 3 Medium Tele (HFOV 28.3°)</option>
+                                <option value="custom">직접 입력 (Custom Camera)</option>
+                            </select>
+                        </div>
+                        
+                        <!-- 커스텀 카메라 화각 설정 (직접 선택 시 활성화) -->
+                        <div id="custom-camera-inputs" style="display: none;" class="control-row">
+                            <div class="control-group">
+                                <label>수평 화각 (HFOV)</label>
+                                <div class="input-container">
+                                    <input type="number" id="camera-hfov" value="73.7" step="0.1" min="10" max="180">
+                                    <span class="unit">°</span>
+                                </div>
+                            </div>
+                            <div class="control-group">
+                                <label>수직 화각 (VFOV)</label>
+                                <div class="input-container">
+                                    <input type="number" id="camera-vfov" value="53.1" step="0.1" min="10" max="180">
+                                    <span class="unit">°</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="control-group">
+                            <label>비행 고도 (AGL)</label>
+                            <div class="input-container">
+                                <input type="number" id="flight-height" value="100" min="10" max="500">
+                                <span class="unit">m</span>
+                            </div>
+                        </div>
+                        <div class="control-row">
+                            <div class="control-group">
+                                <label>종중복 (Front Overlap)</label>
+                                <div class="input-container">
+                                    <input type="number" id="front-overlap" value="80" min="20" max="95">
+                                    <span class="unit">%</span>
+                                </div>
+                            </div>
+                            <div class="control-group">
+                                <label>횡중복 (Side Overlap)</label>
+                                <div class="input-container">
+                                    <input type="number" id="side-overlap" value="70" min="20" max="95">
+                                    <span class="unit">%</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="control-group">
+                            <label>비행 속도</label>
+                            <div class="input-container">
+                                <input type="number" id="flight-speed" value="5" min="1" max="15">
+                                <span class="unit">m/s</span>
+                            </div>
+                        </div>
+                        <div id="overlap-info" class="hint-text">계산된 촬영 간격: --m / --m</div>
+                        <div class="action-buttons">
+                            <button id="btn-generate" class="primary-btn" disabled>KMZ 생성 (드론용)</button>
+                            <button id="btn-preview-kml" class="preview-btn" disabled title="구글 어스 등에서 비행 경로 사전 검토용">KML (미리보기)</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 사이드바 정보 및 도움말 -->
+            <aside class="sidebar" id="sidebar">
+                <div class="sidebar-header mobile-only">
+                    <h3>메뉴</h3>
+                    <button id="btn-sidebar-close"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+                
+                <!-- 미션 실행 정보 요약 패널 -->
+                <section class="info-panel">
+                    <h3>실시간 미션 정보</h3>
+                    <div class="info-item">
+                        <span class="label">선택 영역 크기:</span>
+                        <span id="area-size" class="value">-</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">웨이포인트 개수:</span>
+                        <span id="wp-count" class="value">-</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">예상 총 비행거리:</span>
+                        <span id="total-distance" class="value">-</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">예상 총 비행시간:</span>
+                        <span id="est-time" class="value">-</span>
+                    </div>
+                </section>
+
+                <!-- 사용 안내 가이드 -->
+                <section class="instructions">
+                    <h3><i class="fa-solid fa-map-location-dot"></i> 미션 설계 가이드</h3>
+                    <ol>
+                        <li>지도 우측 상단의 **영역 그리기(⬢)** 도구를 선택합니다.</li>
+                        <li>지도 위에서 비행 및 매핑을 수행할 영역을 클릭하여 다각형을 완성합니다.</li>
+                        <li>드론 기종, 고도, 중복도를 조절하면 격자 경로가 **실시간으로 최적화**됩니다.</li>
+                        <li>설계가 끝나면 **KMZ 생성**을 눌러 드론 전송용 파일을 저장합니다.</li>
+                    </ol>
+                </section>
+
+                <!-- 조종기 전송 경로 클립보드 복사 및 매뉴얼 -->
+                <section class="checklist">
+                    <h3><i class="fa-solid fa-file-export"></i> 스마트 조종기 전송 경로</h3>
+                    <div class="path-box" onclick="copyPath()">
+                        <label>클릭하여 경로 복사</label>
+                        <code>DJI/dji.go.v5/Waypoints/</code>
+                    </div>
+                    <ul class="guide-list">
+                        <li><span>1</span> **경로 복사**: 복사한 스마트 조종기 내부 저장소 폴더에 다운로드받은 KMZ 파일을 저장합니다.</li>
+                        <li><span>2</span> **DJI Fly 앱 로드**: DJI Fly 실행 > 길 아이콘 > 웨이포인트 목록에서 복사한 미션을 가져옵니다.</li>
+                        <li><span>3</span> **최종 안전 진단**: 고도가 주변 지형이나 고압선, 건물 높이보다 안전한지 필드에서 꼭 검수하세요!</li>
+                    </ul>
+                </section>
+
+                <!-- 지형 고도(DEM) 설정 -->
+                <section class="api-panel">
+                    <h3><i class="fa-solid fa-key"></i> Mapbox Terrain DEM 연동</h3>
+                    <div class="control-group">
+                        <label>정밀한 지형 데이터 연동을 원하시면 Mapbox Access Token을 입력해주세요.</label>
+                        <input type="password" id="api-key" placeholder="Mapbox Access Token 입력">
+                    </div>
+                </section>
+
+                <div class="api-info">
+                    <p>Open-Meteo & Mapbox Terrain DEM 연동 중</p>
+                    <div class="badge">Active</div>
+                </div>
+            </aside>
+        </main>
+    </div>
+
+    <!-- 외부 스크립트 모음 -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+    <!-- 내부 스크립트 모음 -->
+    <script src="config.js"></script>
+    <script src="auth.js"></script>
+    <script src="app.js"></script>
+</body>
+
+</html>
