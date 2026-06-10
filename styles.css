@@ -825,3 +825,315 @@ input:focus, select:focus {
     color: rgba(255, 255, 255, 0.25);
     letter-spacing: 0.5px;
 }
+
+/* ==========================================
+   Address Search Box – 네이버 스타일 프리미엄 UI
+   ========================================== */
+.search-container {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    z-index: 1000;
+    width: 380px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.search-box {
+    display: flex;
+    align-items: center;
+    background: var(--glass);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 6px 14px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.search-box:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 10px 30px rgba(0, 229, 255, 0.25), 0 0 0 1px rgba(0, 229, 255, 0.15);
+    background: rgba(24, 24, 31, 0.97);
+}
+
+.search-icon {
+    color: var(--text-muted);
+    font-size: 16px;
+    margin-right: 10px;
+    flex-shrink: 0;
+}
+
+#search-input {
+    background: transparent;
+    border: none;
+    color: white;
+    padding: 9px 0;
+    font-size: 0.95rem;
+    width: 100%;
+    outline: none;
+    box-shadow: none !important;
+}
+
+#search-input::placeholder {
+    color: var(--text-muted);
+    opacity: 0.8;
+}
+
+.search-clear-btn {
+    background: rgba(255,255,255,0.08);
+    border: none;
+    color: var(--text-muted);
+    font-size: 13px;
+    cursor: pointer;
+    padding: 5px;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s, color 0.2s;
+    flex-shrink: 0;
+}
+
+.search-clear-btn:hover {
+    background: rgba(0, 229, 255, 0.15);
+    color: var(--accent);
+}
+
+/* 검색 결과 드롭다운 */
+.search-results {
+    background: rgba(18, 18, 26, 0.97);
+    backdrop-filter: blur(25px);
+    -webkit-backdrop-filter: blur(25px);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 16px;
+    max-height: 320px;
+    overflow-y: auto;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(0,229,255,0.05);
+    display: none;
+    animation: searchDropIn 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes searchDropIn {
+    from { opacity: 0; transform: translateY(-6px) scale(0.98); }
+    to   { opacity: 1; transform: translateY(0)   scale(1); }
+}
+
+.search-results::-webkit-scrollbar {
+    width: 5px;
+}
+.search-results::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 3px;
+}
+
+/* 일반 검색 결과 항목 */
+.search-item {
+    padding: 11px 14px;
+    cursor: pointer;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    transition: background 0.15s;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    text-align: left;
+}
+
+.search-item:last-child {
+    border-bottom: none;
+}
+
+.search-item:hover {
+    background: rgba(0, 229, 255, 0.07);
+}
+
+.search-item-icon {
+    font-size: 16px;
+    margin-top: 1px;
+    flex-shrink: 0;
+    opacity: 0.85;
+}
+
+.search-item-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.search-item .place-name {
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: white;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    line-height: 1.4;
+}
+
+.search-item .place-name mark {
+    background: rgba(0, 229, 255, 0.25);
+    color: var(--accent);
+    border-radius: 2px;
+    padding: 0 1px;
+}
+
+.search-item .place-address {
+    font-size: 0.73rem;
+    color: var(--text-muted);
+    margin-top: 3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.3;
+}
+
+/* 카테고리 배지 */
+.result-badge {
+    font-size: 0.62rem;
+    font-weight: 700;
+    background: rgba(0, 229, 255, 0.1);
+    color: var(--accent);
+    border: 1px solid rgba(0, 229, 255, 0.2);
+    border-radius: 5px;
+    padding: 1px 5px;
+    letter-spacing: 0.3px;
+    white-space: nowrap;
+}
+
+/* 최근 검색 헤더 */
+.search-history-label {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px 6px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+
+.clear-history-btn {
+    background: none;
+    border: none;
+    color: #5a5a6e;
+    font-size: 0.72rem;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+    transition: color 0.2s, background 0.2s;
+}
+.clear-history-btn:hover {
+    color: #ff6b6b;
+    background: rgba(255, 107, 107, 0.1);
+}
+
+/* 최근 검색 항목 특이화 */
+.search-history-item .search-item-icon {
+    opacity: 0.5;
+}
+
+/* 로딩 상태 */
+.search-loading {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 16px 16px;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+
+.search-spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(255, 255, 255, 0.1);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    flex-shrink: 0;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* 결과 없음 안내 */
+.search-empty {
+    padding: 24px 16px;
+    text-align: center;
+}
+
+.search-empty-icon {
+    font-size: 28px;
+    margin-bottom: 8px;
+    opacity: 0.5;
+}
+
+.search-empty-text {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+}
+
+.search-empty-text strong {
+    color: white;
+}
+
+.search-empty-hint {
+    font-size: 0.75rem;
+    color: #3a3a4e;
+}
+
+/* 내 위치 마커 스타일 */
+.user-location-marker {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.user-location-marker .dot {
+    width: 12px;
+    height: 12px;
+    background-color: var(--primary);
+    border: 2px solid white;
+    border-radius: 50%;
+    position: absolute;
+    box-shadow: 0 0 5px rgba(0, 0, 0, 0.3);
+    z-index: 2;
+}
+
+.user-location-marker .pulse {
+    width: 20px;
+    height: 20px;
+    background-color: rgba(0, 122, 255, 0.6);
+    border-radius: 50%;
+    position: absolute;
+    animation: pulse-animation 2s infinite;
+    z-index: 1;
+}
+
+@keyframes pulse-animation {
+    0% {
+        transform: scale(0.6);
+        opacity: 1;
+    }
+
+    100% {
+        transform: scale(3.5);
+        opacity: 0;
+    }
+}
+
+@media (max-width: 768px) {
+    .search-container {
+        left: 12px;
+        top: 12px;
+        width: calc(100% - 24px);
+    }
+}
+

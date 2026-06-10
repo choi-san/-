@@ -103,6 +103,9 @@ function initMap() {
       coordDisp.innerText = `위도: ${e.latlng.lat.toFixed(6)}, 경도: ${e.latlng.lng.toFixed(6)}`;
     }
   });
+
+  // 주소/장소 검색 기능 초기화
+  initAddressSearch();
 }
 
 /**
@@ -569,3 +572,434 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-generate').addEventListener('click', createKMZ);
   document.getElementById('btn-preview-kml').addEventListener('click', exportKML);
 });
+
+// =====================================================================
+// 🔍 네이버 스타일 주소 검색 모듈 (VWorld Geocoding API + JSONP)
+// - 도로명 / 지번 / 장소명 통합 검색
+// - CORS 우회: JSONP 콜백 방식
+// - 실시간 자동완성 드롭다운 (300ms 디바운스)
+// - 최근 검색 기록 (localStorage)
+// =====================================================================
+
+const VWORLD_KEY = '1CD56BFD-7224-3921-85A9-A61740EC1E91';
+let searchMarker = null;
+let searchTimeout = null;
+let jsonpCallbackCounter = 0;
+const SEARCH_HISTORY_KEY = 'droneplannerSearchHistory';
+
+/**
+ * 주소 검색 모듈 초기화
+ * - 입력 이벤트 바인딩, 지우기 버튼, 외부 클릭 닫기, 포커스 시 히스토리 표시
+ */
+function initAddressSearch() {
+  const searchInput = document.getElementById('search-input');
+  const searchResults = document.getElementById('search-results');
+  const btnClear = document.getElementById('btn-search-clear');
+
+  if (!searchInput || !searchResults) return;
+
+  // 입력 이벤트: 300ms 디바운스 후 VWorld API 호출
+  searchInput.addEventListener('input', (e) => {
+    const query = e.target.value.trim();
+
+    if (query.length > 0) {
+      if (btnClear) btnClear.style.display = 'flex';
+    } else {
+      if (btnClear) btnClear.style.display = 'none';
+      showSearchHistory(); // 빈 입력 시 최근 검색어 표시
+      return;
+    }
+
+    if (query.length < 2) return; // 2글자 이상 입력 시 검색
+
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(() => {
+      performVWorldSearch(query);
+    }, 300);
+  });
+
+  // 엔터 키: 즉시 검색
+  searchInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      clearTimeout(searchTimeout);
+      const query = searchInput.value.trim();
+      if (query.length >= 2) performVWorldSearch(query);
+    }
+    // ESC: 결과 닫기
+    if (e.key === 'Escape') {
+      searchResults.style.display = 'none';
+      searchInput.blur();
+    }
+  });
+
+  // X 버튼: 전체 초기화
+  if (btnClear) {
+    btnClear.addEventListener('click', () => {
+      searchInput.value = '';
+      btnClear.style.display = 'none';
+      searchResults.style.display = 'none';
+      searchResults.innerHTML = '';
+      if (searchMarker) {
+        map.removeLayer(searchMarker);
+        searchMarker = null;
+      }
+      searchInput.focus();
+    });
+  }
+
+  // 검색창 외부 클릭 시 결과 닫기
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.search-container')) {
+      searchResults.style.display = 'none';
+    }
+  });
+
+  // 검색창 포커스: 최근 검색어 또는 이전 결과 다시 표시
+  searchInput.addEventListener('focus', () => {
+    const query = searchInput.value.trim();
+    if (!query) {
+      showSearchHistory();
+    } else if (searchResults.children.length > 0) {
+      searchResults.style.display = 'block';
+    }
+  });
+}
+
+/**
+ * JSONP 방식 VWorld API 호출
+ * CORS 제한을 브라우저 script 태그 동적 삽입으로 우회
+ * @param {string} query - 검색어
+ * @param {string} type - 검색 타입 (ADDRESS | POI)
+ * @returns {Promise<object[]>}
+ */
+function vworldJSONP(query, type) {
+  return new Promise((resolve, reject) => {
+    const callbackName = `_vwCb${++jsonpCallbackCounter}`;
+    const script = document.createElement('script');
+    const timeoutId = setTimeout(() => {
+      cleanup();
+      reject(new Error('VWorld API 요청 시간 초과'));
+    }, 8000);
+
+    function cleanup() {
+      clearTimeout(timeoutId);
+      delete window[callbackName];
+      if (script.parentNode) script.parentNode.removeChild(script);
+    }
+
+    window[callbackName] = (data) => {
+      cleanup();
+      resolve(data);
+    };
+
+    // VWorld Search API 파라미터
+    const params = new URLSearchParams({
+      service: 'search',
+      request: 'search',
+      key: VWORLD_KEY,
+      query: query,
+      type: type,          // ADDRESS or POI
+      format: 'json',
+      size: 5,
+      page: 1,
+      callback: callbackName
+    });
+
+    script.src = `https://api.vworld.kr/req/search?${params.toString()}`;
+    script.onerror = () => {
+      cleanup();
+      reject(new Error('스크립트 로드 실패'));
+    };
+    document.head.appendChild(script);
+  });
+}
+
+/**
+ * VWorld 통합 검색 실행
+ * 도로명 주소(ADDRESS) + 장소명(POI) 병렬 요청 후 병합 표시
+ */
+async function performVWorldSearch(query) {
+  const searchResults = document.getElementById('search-results');
+  if (!searchResults) return;
+
+  // 로딩 상태 표시
+  searchResults.innerHTML = `
+    <div class="search-loading">
+      <div class="search-spinner"></div>
+      <span>검색 중...</span>
+    </div>`;
+  searchResults.style.display = 'block';
+
+  try {
+    // 주소 + POI 병렬 검색
+    const [addrRes, poiRes] = await Promise.allSettled([
+      vworldJSONP(query, 'ADDRESS'),
+      vworldJSONP(query, 'POI')
+    ]);
+
+    const items = [];
+
+    // 주소 결과 파싱
+    if (addrRes.status === 'fulfilled') {
+      const res = addrRes.value;
+      if (res?.response?.status === 'OK' && res.response.result?.items) {
+        res.response.result.items.forEach(item => {
+          const pt = item.point;
+          if (!pt) return;
+          items.push({
+            type: 'address',
+            mainName: item.address?.road || item.address?.parcel || item.title || query,
+            subName: item.address?.parcel ? `지번 ${item.address.parcel}` : '',
+            lat: parseFloat(pt.y),
+            lng: parseFloat(pt.x),
+            category: '주소'
+          });
+        });
+      }
+    }
+
+    // POI 결과 파싱
+    if (poiRes.status === 'fulfilled') {
+      const res = poiRes.value;
+      if (res?.response?.status === 'OK' && res.response.result?.items) {
+        res.response.result.items.forEach(item => {
+          const pt = item.point;
+          if (!pt) return;
+          // 중복 좌표 제거 (주소 결과와 겹치는 경우)
+          const isDuplicate = items.some(existing =>
+            Math.abs(existing.lat - parseFloat(pt.y)) < 0.0001 &&
+            Math.abs(existing.lng - parseFloat(pt.x)) < 0.0001
+          );
+          if (!isDuplicate) {
+            items.push({
+              type: 'poi',
+              mainName: item.title || query,
+              subName: item.address?.road || item.address?.parcel || '',
+              lat: parseFloat(pt.y),
+              lng: parseFloat(pt.x),
+              category: item.category?.main || '장소'
+            });
+          }
+        });
+      }
+    }
+
+    // VWorld 결과가 없으면 OSM Nominatim 폴백
+    if (items.length === 0) {
+      await performNominatimFallback(query);
+      return;
+    }
+
+    displayVWorldResults(items, query);
+
+  } catch (error) {
+    console.warn('VWorld 검색 오류, Nominatim 폴백:', error);
+    await performNominatimFallback(query);
+  }
+}
+
+/**
+ * Nominatim 폴백 (VWorld 실패 시)
+ */
+async function performNominatimFallback(query) {
+  const searchResults = document.getElementById('search-results');
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&countrycodes=kr&accept-language=ko&limit=5`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+
+    if (!data || data.length === 0) {
+      showNoResults(query);
+      return;
+    }
+
+    const items = data.map(r => {
+      const parts = r.display_name.split(',');
+      return {
+        type: 'nominatim',
+        mainName: parts[0].trim(),
+        subName: parts.slice(1, 4).map(p => p.trim()).join(' '),
+        lat: parseFloat(r.lat),
+        lng: parseFloat(r.lon),
+        category: r.type || '장소'
+      };
+    });
+    displayVWorldResults(items, query);
+  } catch (err) {
+    console.error('Nominatim 오류:', err);
+    showNoResults(query);
+  }
+}
+
+/**
+ * 검색 결과 렌더링 (네이버 지도 스타일)
+ */
+function displayVWorldResults(items, query) {
+  const searchResults = document.getElementById('search-results');
+  if (!searchResults) return;
+
+  searchResults.innerHTML = '';
+
+  if (!items || items.length === 0) {
+    showNoResults(query);
+    return;
+  }
+
+  items.forEach((item, idx) => {
+    const typeIcon = item.type === 'poi' ? '📍' : '🏠';
+    const categoryBadge = `<span class="result-badge">${item.category}</span>`;
+
+    // 검색어 하이라이트
+    const highlighted = item.mainName.replace(
+      new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'),
+      '<mark>$1</mark>'
+    );
+
+    const div = document.createElement('div');
+    div.className = 'search-item';
+    div.setAttribute('data-index', idx);
+    div.innerHTML = `
+      <div class="search-item-icon">${typeIcon}</div>
+      <div class="search-item-content">
+        <div class="place-name">${highlighted} ${categoryBadge}</div>
+        ${item.subName ? `<div class="place-address">${item.subName}</div>` : ''}
+      </div>
+    `;
+
+    div.addEventListener('click', () => {
+      selectSearchResult(item);
+    });
+
+    searchResults.appendChild(div);
+  });
+
+  searchResults.style.display = 'block';
+}
+
+/**
+ * 검색 결과 선택 처리
+ */
+function selectSearchResult(item) {
+  const searchInput = document.getElementById('search-input');
+  const searchResults = document.getElementById('search-results');
+
+  // 지도 이동 (부드러운 flyTo)
+  map.flyTo([item.lat, item.lng], 17, {
+    animate: true,
+    duration: 1.2
+  });
+
+  // 마커 표시
+  showSearchMarker(item.lat, item.lng, item.mainName, item.subName);
+
+  // 입력창 업데이트
+  if (searchInput) searchInput.value = item.mainName;
+  if (searchResults) searchResults.style.display = 'none';
+
+  // 최근 검색 기록 저장
+  saveSearchHistory(item);
+}
+
+/**
+ * 검색 결과 없음 표시
+ */
+function showNoResults(query) {
+  const searchResults = document.getElementById('search-results');
+  if (!searchResults) return;
+  searchResults.innerHTML = `
+    <div class="search-empty">
+      <div class="search-empty-icon">🔍</div>
+      <div class="search-empty-text"><strong>"${query}"</strong>에 대한 결과가 없습니다.</div>
+      <div class="search-empty-hint">도로명, 지번 또는 장소명으로 검색해 보세요.</div>
+    </div>`;
+  searchResults.style.display = 'block';
+}
+
+/**
+ * 최근 검색어 저장 (최대 5개)
+ */
+function saveSearchHistory(item) {
+  try {
+    let history = JSON.parse(localStorage.getItem(SEARCH_HISTORY_KEY) || '[]');
+    // 중복 제거
+    history = history.filter(h => h.mainName !== item.mainName);
+    // 앞에 추가
+    history.unshift({ mainName: item.mainName, subName: item.subName, lat: item.lat, lng: item.lng, category: item.category, type: item.type });
+    // 최대 5개 유지
+    history = history.slice(0, 5);
+    localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(history));
+  } catch (e) {
+    // localStorage 오류 무시
+  }
+}
+
+/**
+ * 최근 검색 기록 드롭다운 표시
+ */
+function showSearchHistory() {
+  const searchResults = document.getElementById('search-results');
+  if (!searchResults) return;
+
+  let history = [];
+  try {
+    history = JSON.parse(localStorage.getItem(SEARCH_HISTORY_KEY) || '[]');
+  } catch (e) { }
+
+  if (history.length === 0) {
+    searchResults.style.display = 'none';
+    return;
+  }
+
+  searchResults.innerHTML = `<div class="search-history-label"><span>최근 검색</span><button class="clear-history-btn" onclick="clearSearchHistory()">전체 삭제</button></div>`;
+
+  history.forEach(item => {
+    const div = document.createElement('div');
+    div.className = 'search-item search-history-item';
+    div.innerHTML = `
+      <div class="search-item-icon">🕐</div>
+      <div class="search-item-content">
+        <div class="place-name">${item.mainName}</div>
+        ${item.subName ? `<div class="place-address">${item.subName}</div>` : ''}
+      </div>
+    `;
+    div.addEventListener('click', () => {
+      selectSearchResult(item);
+    });
+    searchResults.appendChild(div);
+  });
+
+  searchResults.style.display = 'block';
+}
+
+/**
+ * 최근 검색 기록 전체 삭제
+ */
+function clearSearchHistory() {
+  localStorage.removeItem(SEARCH_HISTORY_KEY);
+  const searchResults = document.getElementById('search-results');
+  if (searchResults) searchResults.style.display = 'none';
+}
+
+/**
+ * 검색 마커 표시 (펄스 애니메이션)
+ */
+function showSearchMarker(lat, lng, name, address) {
+  if (searchMarker) {
+    map.removeLayer(searchMarker);
+  }
+
+  const searchIcon = L.divIcon({
+    className: 'user-location-marker',
+    html: '<div class="dot"></div><div class="pulse"></div>',
+    iconSize: [24, 24],
+    iconAnchor: [12, 12]
+  });
+
+  searchMarker = L.marker([lat, lng], { icon: searchIcon }).addTo(map);
+  const popupContent = address
+    ? `<b>${name}</b><br><span style="font-size:0.8em;color:#aaa;">${address}</span>`
+    : `<b>${name}</b>`;
+  searchMarker.bindPopup(popupContent).openPopup();
+}
