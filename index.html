@@ -58,6 +58,24 @@
             <div id="map-container">
                 <!-- Leaflet 지도 객체 -->
                 <div id="map"></div>
+
+                <!-- 🔍 주소/장소 검색 박스 (지도 위 오버레이) -->
+                <div class="search-container">
+                    <div class="search-box">
+                        <i class="fa-solid fa-magnifying-glass search-icon"></i>
+                        <input
+                            type="text"
+                            id="search-input"
+                            placeholder="장소 또는 주소를 검색하세요..."
+                            autocomplete="off"
+                            spellcheck="false"
+                        >
+                        <button id="btn-search-clear" class="search-clear-btn" style="display:none;" title="검색어 지우기">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
+                    </div>
+                    <div id="search-results" class="search-results"></div>
+                </div>
                 
                 <!-- 경로 파라미터 조절용 오버레이 컨트롤 (바텀 시트 겸용) -->
                 <div class="overlay-controls" id="overlay-controls">
